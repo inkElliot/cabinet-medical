@@ -54,7 +54,7 @@ if menu == "📅 Calendar programări":
     with col_med:
         medic_options = {f"{n} — {s}": mid for mid, n, s in medici}
         medic_selectat = st.selectbox("Medic", list(medic_options.keys()))
-        medic_id = medic_options[medic_selectat]
+        medic_id = medic_options.get(medic_selectat)
 
     with col_data:
         data_selectata = st.date_input("Data", value=date.today())
@@ -70,6 +70,9 @@ if menu == "📅 Calendar programări":
 
     st.markdown(f"### 📆 {data_selectata.strftime('%A, %d %B %Y')}")
     st.divider()
+
+    if not medic_id:
+        st.stop()
 
     programari = get_programari_by_medic_data(medic_id, data_selectata)
     prog_by_ora = {p[2]: p for p in programari}

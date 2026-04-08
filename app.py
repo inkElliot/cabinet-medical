@@ -499,7 +499,7 @@ elif menu == "📂 Istoric":
             with st.form("form_istoric", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    medic_options = {f"{n} — {s}": mid for mid, n, s, c in medici}
+                    medic_options = {f"{n} — {s}": mid for mid, n, s, c, iv in medici}
                     medic_sel = st.selectbox("Medic", list(medic_options.keys()))
                     data = st.date_input("Data consultației")
                 with col2:
@@ -527,7 +527,7 @@ elif menu == "📂 Istoric":
         pacient_filter_options = {"Toți pacienții": None} | {n: pid for pid, n, *_ in pacienti}
         pacient_f = st.selectbox("Pacient", list(pacient_filter_options.keys()))
     with col2:
-        medic_filter_options = {"Toți medicii": None} | {f"{n} — {s}": mid for mid, n, s, c in medici}
+        medic_filter_options = {"Toți medicii": None} | {f"{n} — {s}": mid for mid, n, s, c, iv in medici}
         medic_f = st.selectbox("Medic", list(medic_filter_options.keys()))
 
     consultații = get_istoric(

@@ -2,7 +2,8 @@ import sqlite3
 import hashlib
 import os
 
-DB_PATH = "cabinet_medical.db"
+# Pe Railway se foloseste /data (volume persistent), local fisierul curent
+DB_PATH = "/data/cabinet_medical.db" if os.path.isdir("/data") else "cabinet_medical.db"
 
 MEDIC_COLORS = [
     "#e74c3c", "#3498db", "#2ecc71", "#f39c12",

@@ -246,9 +246,6 @@ elif menu == "➕ Programare nouă":
         st.stop()
 
     # ── Pacient: caută sau adaugă nou ─────────────────────────────────────────
-    cautare = st.text_input("🔍 Caută pacient după nume", placeholder="ex: Ion Popescu")
-    pacienti = search_pacienti(cautare) if len(cautare) >= 2 else get_pacienti()
-
     pacient_nou = st.toggle("➕ Pacient nou (nu există în listă)")
 
     pid_selectat = None
@@ -266,10 +263,33 @@ elif menu == "➕ Programare nouă":
                                       min_value=date(1900,1,1), max_value=date.today(),
                                       key="np_dn")
     else:
-        if pacienti:
-            pacient_options = {f"{n}{' · ' + t if t else ''}": pid for pid, n, t, *_ in pacienti}
-            pacient_sel = st.selectbox("Selectează pacient", list(pacient_options.keys()))
+        toti_pacientii = get_pacienti()
+        if toti_pacientii:
+            # Format: "Nume · Telefon" — utilizatorul poate tasta direct în selectbox pentru filtrare
+            pacient_options = {
+                f"{n}{'  ·  📞 ' + t if t else ''}": pid
+                for pid, n, t, *_ in toti_pacientii
+            }
+            st.caption("💡 Tastează direct în câmp pentru a filtra după nume sau telefon")
+            pacient_sel = st.selectbox(
+                "🔍 Selectează pacient",
+                list(pacient_options.keys()),
+                index=0,
+                placeholder="Scrie pentru a căuta..."
+            )
             pid_selectat = pacient_options.get(pacient_sel)
+            # Afișează detalii pacient selectat
+            if pid_selectat:
+                pac_info = next((p for p in toti_pacientii if p[0] == pid_selectat), None)
+                if pac_info:
+                    _, pn, pt, pe, pdn = pac_info
+                    varsta = calc_varsta(pdn)
+                    st.info(
+                        f"**{pn}**"
+                        + (f"  |  📞 {pt}" if pt else "")
+                        + (f"  |  ✉️ {pe}" if pe else "")
+                        + (f"  |  🎂 {varsta}" if varsta else "")
+                    )
         else:
             st.info("Niciun pacient găsit. Activează 'Pacient nou' pentru a adăuga.")
 

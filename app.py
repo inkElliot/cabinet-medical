@@ -265,40 +265,57 @@ elif menu == "➕ Programare nouă":
     else:
         toti_pacientii = get_pacienti()
         if toti_pacientii:
-            cautare = st.text_input("🔍 Caută pacient", placeholder="Scrie numele sau telefonul...")
-            if cautare.strip():
+            # Inițializare pacient selectat în session_state
+            if "pid_ales" not in st.session_state:
+                st.session_state["pid_ales"] = None
+                st.session_state["pacient_ales_nume"] = ""
+
+            cautare = st.text_input(
+                "🔍 Caută pacient",
+                placeholder="Scrie numele sau telefonul...",
+                value=st.session_state["pacient_ales_nume"]
+            )
+
+            # Dacă s-a șters textul, resetăm selecția
+            if not cautare.strip():
+                st.session_state["pid_ales"] = None
+                st.session_state["pacient_ales_nume"] = ""
+
+            pid_selectat = st.session_state.get("pid_ales")
+
+            # Arată sugestii doar dacă nu e deja selectat un pacient
+            if cautare.strip() and not pid_selectat:
                 filtrati = [p for p in toti_pacientii
                             if cautare.lower() in p[1].lower()
-                            or cautare in (p[2] or "")]
-            else:
-                filtrati = toti_pacientii
+                            or cautare in (p[2] or "")][:6]
+                if filtrati:
+                    for pac in filtrati:
+                        pid, pnume, ptel, *_ = pac
+                        label = f"👤 {pnume}" + (f"  —  📞 {ptel}" if ptel else "")
+                        if st.button(label, key=f"sug_{pid}", use_container_width=True):
+                            st.session_state["pid_ales"] = pid
+                            st.session_state["pacient_ales_nume"] = pnume
+                            st.rerun()
+                else:
+                    st.warning("Niciun pacient găsit. Încearcă alt nume sau activează 'Pacient nou'.")
 
-            if filtrati:
-                pacient_options = {
-                    f"{n}{'  ·  📞 ' + t if t else ''}": pid
-                    for pid, n, t, *_ in filtrati
-                }
-                pacient_sel = st.selectbox(
-                    "Selectează din rezultate",
-                    list(pacient_options.keys()),
-                    index=None,
-                    placeholder="Alege pacientul..."
-                )
-                pid_selectat = pacient_options.get(pacient_sel)
-
-                if pid_selectat:
-                    pac_info = next((p for p in toti_pacientii if p[0] == pid_selectat), None)
-                    if pac_info:
-                        _, pn, pt, pe, pdn = pac_info
-                        varsta = calc_varsta(pdn)
-                        st.info(
-                            f"**{pn}**"
-                            + (f"  |  📞 {pt}" if pt else "")
-                            + (f"  |  ✉️ {pe}" if pe else "")
-                            + (f"  |  🎂 {varsta}" if varsta else "")
-                        )
-            else:
-                st.warning("Niciun pacient găsit. Încearcă alt nume sau adaugă pacient nou.")
+            # Card pacient selectat
+            if pid_selectat:
+                pac_info = next((p for p in toti_pacientii if p[0] == pid_selectat), None)
+                if pac_info:
+                    _, pn, pt, pe, pdn = pac_info
+                    varsta = calc_varsta(pdn)
+                    col_info, col_reset = st.columns([5, 1])
+                    col_info.success(
+                        f"✅ **{pn}**"
+                        + (f"  |  📞 {pt}" if pt else "")
+                        + (f"  |  ✉️ {pe}" if pe else "")
+                        + (f"  |  🎂 {varsta}" if varsta else "")
+                    )
+                    if col_reset.button("✕", help="Schimbă pacientul"):
+                        st.session_state["pid_ales"] = None
+                        st.session_state["pacient_ales_nume"] = ""
+                        st.rerun()
         else:
             st.info("Niciun pacient înregistrat. Activează 'Pacient nou' pentru a adăuga.")
 
@@ -323,6 +340,8 @@ elif menu == "➕ Programare nouă":
 
         if submitted:
             mid, _ = medic_options[medic_sel]
+            if not pacient_nou:
+                pid_selectat = st.session_state.get("pid_ales")
 
             # Dacă e pacient nou, îl adăugăm automat
             if pacient_nou:

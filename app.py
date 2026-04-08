@@ -265,33 +265,42 @@ elif menu == "➕ Programare nouă":
     else:
         toti_pacientii = get_pacienti()
         if toti_pacientii:
-            # Format: "Nume · Telefon" — utilizatorul poate tasta direct în selectbox pentru filtrare
-            pacient_options = {
-                f"{n}{'  ·  📞 ' + t if t else ''}": pid
-                for pid, n, t, *_ in toti_pacientii
-            }
-            st.caption("💡 Tastează direct în câmp pentru a filtra după nume sau telefon")
-            pacient_sel = st.selectbox(
-                "🔍 Selectează pacient",
-                list(pacient_options.keys()),
-                index=None,
-                placeholder="Scrie pentru a căuta..."
-            )
-            pid_selectat = pacient_options.get(pacient_sel)
-            # Afișează detalii pacient selectat
-            if pid_selectat:
-                pac_info = next((p for p in toti_pacientii if p[0] == pid_selectat), None)
-                if pac_info:
-                    _, pn, pt, pe, pdn = pac_info
-                    varsta = calc_varsta(pdn)
-                    st.info(
-                        f"**{pn}**"
-                        + (f"  |  📞 {pt}" if pt else "")
-                        + (f"  |  ✉️ {pe}" if pe else "")
-                        + (f"  |  🎂 {varsta}" if varsta else "")
-                    )
+            cautare = st.text_input("🔍 Caută pacient", placeholder="Scrie numele sau telefonul...")
+            if cautare.strip():
+                filtrati = [p for p in toti_pacientii
+                            if cautare.lower() in p[1].lower()
+                            or cautare in (p[2] or "")]
+            else:
+                filtrati = toti_pacientii
+
+            if filtrati:
+                pacient_options = {
+                    f"{n}{'  ·  📞 ' + t if t else ''}": pid
+                    for pid, n, t, *_ in filtrati
+                }
+                pacient_sel = st.selectbox(
+                    "Selectează din rezultate",
+                    list(pacient_options.keys()),
+                    index=None,
+                    placeholder="Alege pacientul..."
+                )
+                pid_selectat = pacient_options.get(pacient_sel)
+
+                if pid_selectat:
+                    pac_info = next((p for p in toti_pacientii if p[0] == pid_selectat), None)
+                    if pac_info:
+                        _, pn, pt, pe, pdn = pac_info
+                        varsta = calc_varsta(pdn)
+                        st.info(
+                            f"**{pn}**"
+                            + (f"  |  📞 {pt}" if pt else "")
+                            + (f"  |  ✉️ {pe}" if pe else "")
+                            + (f"  |  🎂 {varsta}" if varsta else "")
+                        )
+            else:
+                st.warning("Niciun pacient găsit. Încearcă alt nume sau adaugă pacient nou.")
         else:
-            st.info("Niciun pacient găsit. Activează 'Pacient nou' pentru a adăuga.")
+            st.info("Niciun pacient înregistrat. Activează 'Pacient nou' pentru a adăuga.")
 
     st.divider()
 

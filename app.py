@@ -39,20 +39,28 @@ if st.session_state.user is None:
                 st.error("Utilizator sau parolă greșite.")
     st.stop()
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(f"👤 **{st.session_state.user['username']}** `{st.session_state.user['rol']}`")
-    if st.button("🚪 Ieșire"):
+# ── Navigare top ─────────────────────────────────────────────────────────────
+col_logo, col_user = st.columns([6, 1])
+col_logo.title("🏥 Cabinet Medical")
+with col_user:
+    st.markdown(f"<div style='text-align:right;padding-top:16px'>👤 <b>{st.session_state.user['username']}</b></div>", unsafe_allow_html=True)
+    if st.button("🚪 Ieșire", use_container_width=True):
         st.session_state.user = None
         st.rerun()
-    st.divider()
 
-    menu = st.selectbox(
-        "Meniu",
-        ["🏠 Dashboard", "📅 Calendar programări", "➕ Programare nouă",
-         "👨‍⚕️ Medici", "🧑 Pacienți", "📋 Toate programările",
-         "📂 Istoric", "📊 Statistici", "⚙️ Setări"]
-    )
+PAGINI = [
+    "🏠 Dashboard",
+    "📅 Calendar programări",
+    "➕ Programare nouă",
+    "👨‍⚕️ Medici",
+    "🧑 Pacienți",
+    "📋 Toate programările",
+    "📂 Istoric",
+    "📊 Statistici",
+    "⚙️ Setări",
+]
+menu = st.radio("", PAGINI, horizontal=True, label_visibility="collapsed")
+st.divider()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 ORE = [f"{h:02d}:{m:02d}" for h in range(8, 19) for m in (0, 30)]
@@ -225,14 +233,37 @@ elif menu == "➕ Programare nouă":
         st.warning("Adaugă mai întâi un medic.")
         st.stop()
 
-    st.subheader("Caută pacient")
-    cautare = st.text_input("Nume pacient (minim 2 caractere)", placeholder="ex: Ion")
+    # ── Pacient: caută sau adaugă nou ─────────────────────────────────────────
+    cautare = st.text_input("🔍 Caută pacient după nume", placeholder="ex: Ion Popescu")
     pacienti = search_pacienti(cautare) if len(cautare) >= 2 else get_pacienti()
 
-    if not pacienti:
-        st.warning("Niciun pacient găsit. Adaugă-l din meniul Pacienți.")
-        st.stop()
+    pacient_nou = st.toggle("➕ Pacient nou (nu există în listă)")
 
+    pid_selectat = None
+
+    if pacient_nou:
+        with st.container(border=True):
+            st.markdown("**Date pacient nou**")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                np_nume = st.text_input("Nume *", key="np_nume")
+                np_tel = st.text_input("Telefon", key="np_tel")
+            with c2:
+                np_email = st.text_input("Email", key="np_email")
+                np_dn = st.date_input("Data nașterii", value=None,
+                                      min_value=date(1900,1,1), max_value=date.today(),
+                                      key="np_dn")
+    else:
+        if pacienti:
+            pacient_options = {f"{n}{' · ' + t if t else ''}": pid for pid, n, t, *_ in pacienti}
+            pacient_sel = st.selectbox("Selectează pacient", list(pacient_options.keys()))
+            pid_selectat = pacient_options.get(pacient_sel)
+        else:
+            st.info("Niciun pacient găsit. Activează 'Pacient nou' pentru a adăuga.")
+
+    st.divider()
+
+    # ── Detalii programare ────────────────────────────────────────────────────
     with st.form("form_programare", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -241,21 +272,35 @@ elif menu == "➕ Programare nouă":
             data = st.date_input("Data", min_value=date.today())
             durata = st.selectbox("Durată (minute)", DURATE, index=2)
         with col2:
-            pacient_options = {f"{n} {'· ' + t if t else ''}": pid for pid, n, t, *_ in pacienti}
-            pacient_sel = st.selectbox("Pacient", list(pacient_options.keys()))
             ora = st.selectbox("Ora", ORE)
+            motiv = st.text_input("Motiv consultație (opțional)")
 
-        motiv = st.text_input("Motiv consultație (opțional)")
-        submitted = st.form_submit_button("Salvează programare", type="primary")
+        submitted = st.form_submit_button("💾 Salvează programare", type="primary")
 
         if submitted:
             mid = medic_options[medic_sel]
-            pid = pacient_options[pacient_sel]
-            if is_slot_ocupat(mid, data, ora):
+
+            # Dacă e pacient nou, îl adăugăm automat
+            if pacient_nou:
+                if not st.session_state.get("np_nume", "").strip():
+                    st.error("Introduceți numele pacientului.")
+                    st.stop()
+                add_pacient(
+                    st.session_state["np_nume"].strip(),
+                    st.session_state.get("np_tel", "").strip(),
+                    st.session_state.get("np_email", "").strip(),
+                    str(st.session_state["np_dn"]) if st.session_state.get("np_dn") else ""
+                )
+                pacienti_noi = search_pacienti(st.session_state["np_nume"].strip())
+                pid_selectat = pacienti_noi[0][0] if pacienti_noi else None
+
+            if not pid_selectat:
+                st.error("Selectați sau adăugați un pacient.")
+            elif is_slot_ocupat(mid, data, ora):
                 st.error(f"Slotul {ora} este deja ocupat pentru acest medic!")
             else:
-                add_programare(pid, mid, data, ora, motiv, durata)
-                st.success(f"✅ Programare salvată: {pacient_sel.split('·')[0].strip()} la {ora} pe {data}")
+                add_programare(pid_selectat, mid, data, ora, motiv, durata)
+                st.success(f"✅ Programare salvată pentru {ora} pe {data}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

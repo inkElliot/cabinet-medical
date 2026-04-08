@@ -37,7 +37,6 @@ if st.session_state.user is None:
                 st.rerun()
             else:
                 st.error("Utilizator sau parolă greșite.")
-    st.caption("Cont implicit: admin / admin123")
     st.stop()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────

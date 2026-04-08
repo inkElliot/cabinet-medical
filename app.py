@@ -274,7 +274,7 @@ elif menu == "➕ Programare nouă":
             pacient_sel = st.selectbox(
                 "🔍 Selectează pacient",
                 list(pacient_options.keys()),
-                index=0,
+                index=None,
                 placeholder="Scrie pentru a căuta..."
             )
             pid_selectat = pacient_options.get(pacient_sel)

@@ -1,48 +1,119 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+import io
+from datetime import date, datetime, timedelta
 from database import (
     create_tables,
+    verify_user, add_utilizator, get_utilizatori, delete_utilizator, change_password,
     add_medic, get_medici, delete_medic,
-    add_pacient, get_pacienti, delete_pacient,
+    add_pacient, get_pacienti, search_pacienti, delete_pacient,
     add_programare, get_programari_by_medic_data, get_all_programari,
+    get_programari_azi, get_stats, get_stats_per_medic,
     update_status_programare, delete_programare, is_slot_ocupat,
     add_istoric, get_istoric,
+    MEDIC_COLORS,
 )
 
 create_tables()
 
+st.set_page_config(page_title="Cabinet Medical", layout="wide")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTENTIFICARE
+# ══════════════════════════════════════════════════════════════════════════════
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if st.session_state.user is None:
+    st.title("🏥 Cabinet Medical")
+    st.subheader("Autentificare")
+    with st.form("login"):
+        username = st.text_input("Utilizator")
+        password = st.text_input("Parolă", type="password")
+        if st.form_submit_button("Intră", type="primary"):
+            user = verify_user(username, password)
+            if user:
+                st.session_state.user = {"id": user[0], "username": user[1], "rol": user[2]}
+                st.rerun()
+            else:
+                st.error("Utilizator sau parolă greșite.")
+    st.caption("Cont implicit: admin / admin123")
+    st.stop()
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(f"👤 **{st.session_state.user['username']}** `{st.session_state.user['rol']}`")
+    if st.button("🚪 Ieșire"):
+        st.session_state.user = None
+        st.rerun()
+    st.divider()
+
+    menu = st.selectbox(
+        "Meniu",
+        ["🏠 Dashboard", "📅 Calendar programări", "➕ Programare nouă",
+         "👨‍⚕️ Medici", "🧑 Pacienți", "📋 Toate programările",
+         "📂 Istoric", "📊 Statistici", "⚙️ Setări"]
+    )
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 ORE = [f"{h:02d}:{m:02d}" for h in range(8, 19) for m in (0, 30)]
+DURATE = [15, 20, 30, 45, 60, 90]
 
 STATUS_COLORS = {
-    "Programat":  "🔵",
+    "Programat": "🔵",
     "Confirmat":  "🟢",
     "Anulat":     "🔴",
     "Finalizat":  "⚫",
 }
 
-def medici_dict():
-    return {f"{n} ({s})": mid for mid, n, s in get_medici()}
+def calc_varsta(data_nasterii_str):
+    if not data_nasterii_str:
+        return ""
+    try:
+        dn = datetime.strptime(data_nasterii_str, "%Y-%m-%d").date()
+        ani = (date.today() - dn).days // 365
+        return f"{ani} ani"
+    except Exception:
+        return ""
 
-def pacienti_dict():
-    return {f"{n}": pid for pid, n, *_ in get_pacienti()}
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🏠 DASHBOARD
+# ══════════════════════════════════════════════════════════════════════════════
+if menu == "🏠 Dashboard":
+    st.title("🏥 Cabinet Medical — Dashboard")
+    st.markdown(f"**{date.today().strftime('%A, %d %B %Y')}**")
+    st.divider()
 
-# ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Cabinet Medical", layout="wide")
-st.title("🏥 Cabinet Medical")
+    stats = get_stats()
 
-menu = st.sidebar.selectbox(
-    "Meniu",
-    ["📅 Calendar programări", "➕ Programare nouă", "👨‍⚕️ Medici", "🧑 Pacienți", "📋 Toate programările", "📂 Istoric"]
-)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("👤 Pacienți total", stats["total_pacienti"])
+    c2.metric("📅 Programări azi", stats["programari_azi"])
+    c3.metric("📆 Programări luna", stats["programari_luna"])
+    c4.metric("❌ Anulate azi", stats["anulate_azi"])
+
+    st.divider()
+    st.subheader("📋 Programări de azi")
+
+    azi_prog = get_programari_azi()
+    if azi_prog:
+        for row in azi_prog:
+            _, pac, med, ora, status, motiv = row
+            emoji = STATUS_COLORS.get(status, "🔵")
+            with st.container(border=True):
+                col1, col2, col3 = st.columns([2, 2, 1])
+                col1.markdown(f"**{ora}** — {pac}")
+                col2.markdown(f"Dr. {med}")
+                col3.markdown(f"{emoji} {status}")
+    else:
+        st.info("Nu există programări pentru azi.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 📅 CALENDAR PROGRAMĂRI
 # ══════════════════════════════════════════════════════════════════════════════
-if menu == "📅 Calendar programări":
+elif menu == "📅 Calendar programări":
     st.header("Calendar programări")
 
     medici = get_medici()
@@ -52,15 +123,14 @@ if menu == "📅 Calendar programări":
 
     col_med, col_data = st.columns(2)
     with col_med:
-        medic_options = {f"{n} — {s}": mid for mid, n, s in medici}
+        medic_options = {f"{n} — {s}": (mid, c) for mid, n, s, c in medici}
         medic_selectat = st.selectbox("Medic", list(medic_options.keys()))
-        medic_id = medic_options.get(medic_selectat)
+        medic_id, medic_culoare = medic_options.get(medic_selectat, (None, "#3498db"))
 
     with col_data:
         data_selectata = st.date_input("Data", value=date.today())
 
-    # Navigare săptămână
-    col_prev, col_week, col_next = st.columns([1, 6, 1])
+    col_prev, _, col_next = st.columns([1, 6, 1])
     with col_prev:
         if st.button("◀ Zi anterioară"):
             data_selectata = data_selectata - timedelta(days=1)
@@ -77,19 +147,31 @@ if menu == "📅 Calendar programări":
     programari = get_programari_by_medic_data(medic_id, data_selectata)
     prog_by_ora = {p[2]: p for p in programari}
 
-    # Grid ore
+    ocupate = sum(1 for o in ORE if o in prog_by_ora)
+    libere = len(ORE) - ocupate
+    st.caption(f"🟢 {libere} sloturi libere &nbsp;|&nbsp; 🔵 {ocupate} ocupate")
+
     for ora in ORE:
-        col_ora, col_info, col_actiuni = st.columns([1, 5, 2])
+        col_ora, col_info, col_actiuni = st.columns([1, 5, 3])
         col_ora.markdown(f"**{ora}**")
 
         if ora in prog_by_ora:
             prog = prog_by_ora[ora]
-            prog_id, pacient_nume, _, motiv, status = prog
+            prog_id, pacient_nume, _, motiv, status, durata, telefon = prog
             emoji = STATUS_COLORS.get(status, "🔵")
-            col_info.markdown(f"{emoji} **{pacient_nume}** &nbsp;|&nbsp; _{motiv or 'fără motiv'}_  &nbsp;`{status}`")
+
+            bg = medic_culoare + "22"
+            col_info.markdown(
+                f"<div style='background:{bg};padding:6px;border-radius:6px;border-left:4px solid {medic_culoare}'>"
+                f"{emoji} <b>{pacient_nume}</b> &nbsp;·&nbsp; {durata} min"
+                f"{'&nbsp;·&nbsp;' + motiv if motiv else ''}"
+                f"{'&nbsp;·&nbsp;📞 ' + telefon if telefon else ''}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
 
             with col_actiuni:
-                c1, c2, c3 = st.columns(3)
+                c1, c2 = st.columns([3, 1])
                 new_status = c1.selectbox(
                     "", ["Programat", "Confirmat", "Anulat", "Finalizat"],
                     index=["Programat", "Confirmat", "Anulat", "Finalizat"].index(status),
@@ -97,11 +179,36 @@ if menu == "📅 Calendar programări":
                     label_visibility="collapsed"
                 )
                 if new_status != status:
-                    update_status_programare(prog_id, new_status)
-                    st.rerun()
+                    if new_status == "Anulat":
+                        st.session_state[f"confirm_anulare_{prog_id}"] = True
+                    else:
+                        update_status_programare(prog_id, new_status)
+                        st.rerun()
+
+                if st.session_state.get(f"confirm_anulare_{prog_id}"):
+                    nota = st.text_input("Motiv anulare", key=f"nota_{prog_id}")
+                    cc1, cc2 = st.columns(2)
+                    if cc1.button("✅ Confirmă", key=f"ok_anulare_{prog_id}"):
+                        update_status_programare(prog_id, "Anulat", nota)
+                        del st.session_state[f"confirm_anulare_{prog_id}"]
+                        st.rerun()
+                    if cc2.button("↩ Renunță", key=f"cancel_anulare_{prog_id}"):
+                        del st.session_state[f"confirm_anulare_{prog_id}"]
+                        st.rerun()
+
                 if c2.button("🗑", key=f"del_{prog_id}", help="Șterge"):
-                    delete_programare(prog_id)
-                    st.rerun()
+                    st.session_state[f"confirm_del_{prog_id}"] = True
+
+                if st.session_state.get(f"confirm_del_{prog_id}"):
+                    st.warning(f"Ștergi programarea lui {pacient_nume}?")
+                    cc1, cc2 = st.columns(2)
+                    if cc1.button("✅ Da, șterge", key=f"ok_del_{prog_id}"):
+                        delete_programare(prog_id)
+                        del st.session_state[f"confirm_del_{prog_id}"]
+                        st.rerun()
+                    if cc2.button("↩ Anulează", key=f"cancel_del_{prog_id}"):
+                        del st.session_state[f"confirm_del_{prog_id}"]
+                        st.rerun()
         else:
             col_info.markdown("<span style='color:#aaa'>— liber —</span>", unsafe_allow_html=True)
 
@@ -115,23 +222,27 @@ elif menu == "➕ Programare nouă":
     st.header("Programare nouă")
 
     medici = get_medici()
-    pacienti = get_pacienti()
-
     if not medici:
         st.warning("Adaugă mai întâi un medic.")
         st.stop()
+
+    st.subheader("Caută pacient")
+    cautare = st.text_input("Nume pacient (minim 2 caractere)", placeholder="ex: Ion")
+    pacienti = search_pacienti(cautare) if len(cautare) >= 2 else get_pacienti()
+
     if not pacienti:
-        st.warning("Adaugă mai întâi un pacient.")
+        st.warning("Niciun pacient găsit. Adaugă-l din meniul Pacienți.")
         st.stop()
 
     with st.form("form_programare", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            medic_options = {f"{n} — {s}": mid for mid, n, s in medici}
+            medic_options = {f"{n} — {s}": mid for mid, n, s, c in medici}
             medic_sel = st.selectbox("Medic", list(medic_options.keys()))
             data = st.date_input("Data", min_value=date.today())
+            durata = st.selectbox("Durată (minute)", DURATE, index=2)
         with col2:
-            pacient_options = {f"{n} (tel: {t or '-'})": pid for pid, n, t, *_ in pacienti}
+            pacient_options = {f"{n} {'· ' + t if t else ''}": pid for pid, n, t, *_ in pacienti}
             pacient_sel = st.selectbox("Pacient", list(pacient_options.keys()))
             ora = st.selectbox("Ora", ORE)
 
@@ -144,8 +255,8 @@ elif menu == "➕ Programare nouă":
             if is_slot_ocupat(mid, data, ora):
                 st.error(f"Slotul {ora} este deja ocupat pentru acest medic!")
             else:
-                add_programare(pid, mid, data, ora, motiv)
-                st.success(f"Programare salvată: {pacient_sel.split('(')[0].strip()} la {ora} pe {data}")
+                add_programare(pid, mid, data, ora, motiv, durata)
+                st.success(f"✅ Programare salvată: {pacient_sel.split('·')[0].strip()} la {ora} pe {data}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -155,28 +266,45 @@ elif menu == "👨‍⚕️ Medici":
     st.header("Medici")
 
     with st.form("form_medic", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns([3, 3, 1])
         with col1:
             nume = st.text_input("Nume medic")
         with col2:
             specialitate = st.text_input("Specialitate")
+        with col3:
+            culoare = st.color_picker("Culoare", "#3498db")
         if st.form_submit_button("Adaugă medic", type="primary"):
             if nume.strip() and specialitate.strip():
-                add_medic(nume.strip(), specialitate.strip())
+                add_medic(nume.strip(), specialitate.strip(), culoare)
                 st.success(f"Dr. {nume} adăugat!")
+                st.rerun()
             else:
                 st.warning("Completați toate câmpurile.")
 
     st.subheader("Lista medici")
     medici = get_medici()
     if medici:
-        for mid, mnume, mspec in medici:
-            col1, col2, col3 = st.columns([3, 3, 1])
-            col1.write(f"**Dr. {mnume}**")
+        for mid, mnume, mspec, mculoare in medici:
+            col1, col2, col3, col4 = st.columns([3, 3, 1, 1])
+            col1.markdown(
+                f"<span style='color:{mculoare}'>■</span> **Dr. {mnume}**",
+                unsafe_allow_html=True
+            )
             col2.write(f"_{mspec}_")
-            if col3.button("🗑 Șterge", key=f"del_med_{mid}"):
-                delete_medic(mid)
-                st.rerun()
+            col3.markdown(f"<div style='width:24px;height:24px;background:{mculoare};border-radius:4px'></div>", unsafe_allow_html=True)
+            if col4.button("🗑", key=f"del_med_{mid}", help="Șterge"):
+                st.session_state[f"confirm_del_med_{mid}"] = True
+
+            if st.session_state.get(f"confirm_del_med_{mid}"):
+                st.warning(f"Ștergi Dr. {mnume}? Toate programările asociate vor fi pierdute.")
+                cc1, cc2 = st.columns(2)
+                if cc1.button("✅ Da", key=f"ok_med_{mid}"):
+                    delete_medic(mid)
+                    del st.session_state[f"confirm_del_med_{mid}"]
+                    st.rerun()
+                if cc2.button("↩ Nu", key=f"cancel_med_{mid}"):
+                    del st.session_state[f"confirm_del_med_{mid}"]
+                    st.rerun()
     else:
         st.info("Nu există medici înregistrați.")
 
@@ -188,26 +316,54 @@ elif menu == "🧑 Pacienți":
     st.header("Pacienți")
 
     with st.form("form_pacient", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
-            nume = st.text_input("Nume pacient")
-        with col2:
+            nume = st.text_input("Nume pacient *")
             telefon = st.text_input("Telefon")
-        with col3:
+        with col2:
             email = st.text_input("Email")
+            data_nasterii = st.date_input(
+                "Data nașterii",
+                value=None,
+                min_value=date(1900, 1, 1),
+                max_value=date.today()
+            )
         if st.form_submit_button("Adaugă pacient", type="primary"):
             if nume.strip():
-                add_pacient(nume.strip(), telefon.strip(), email.strip())
+                add_pacient(
+                    nume.strip(), telefon.strip(), email.strip(),
+                    str(data_nasterii) if data_nasterii else ""
+                )
                 st.success(f"Pacientul {nume} a fost adăugat!")
+                st.rerun()
             else:
                 st.warning("Introduceți numele pacientului.")
 
-    st.subheader("Lista pacienți")
-    pacienti = get_pacienti()
+    st.subheader("Căutare pacienți")
+    cautare = st.text_input("Caută după nume", placeholder="minim 2 caractere")
+    pacienti = search_pacienti(cautare) if len(cautare) >= 2 else get_pacienti()
+
     if pacienti:
-        df = pd.DataFrame(pacienti, columns=["ID", "Nume", "Telefon", "Email"])
-        df = df.set_index("ID")
-        st.dataframe(df, use_container_width=True)
+        for pid, pnume, ptel, pemail, pdn in pacienti:
+            varsta = calc_varsta(pdn)
+            with st.container(border=True):
+                c1, c2, c3, c4 = st.columns([3, 2, 2, 1])
+                c1.markdown(f"**{pnume}**" + (f"  ·  {varsta}" if varsta else ""))
+                c2.write(f"📞 {ptel or '—'}")
+                c3.write(f"✉️ {pemail or '—'}")
+                if c4.button("🗑", key=f"del_pac_{pid}"):
+                    st.session_state[f"confirm_del_pac_{pid}"] = True
+
+                if st.session_state.get(f"confirm_del_pac_{pid}"):
+                    st.warning(f"Ștergi pacientul {pnume}?")
+                    cc1, cc2 = st.columns(2)
+                    if cc1.button("✅ Da", key=f"ok_pac_{pid}"):
+                        delete_pacient(pid)
+                        del st.session_state[f"confirm_del_pac_{pid}"]
+                        st.rerun()
+                    if cc2.button("↩ Nu", key=f"cancel_pac_{pid}"):
+                        del st.session_state[f"confirm_del_pac_{pid}"]
+                        st.rerun()
     else:
         st.info("Nu există pacienți înregistrați.")
 
@@ -223,26 +379,44 @@ elif menu == "📋 Toate programările":
         st.info("Nu există programări.")
         st.stop()
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        medici_filter = ["Toți"] + list({r[2] for r in programari})
-        medic_f = st.selectbox("Filtrează medic", medici_filter)
+        medici_filter = ["Toți"] + sorted({r[2] for r in programari})
+        medic_f = st.selectbox("Medic", medici_filter)
     with col2:
         status_filter = ["Toate", "Programat", "Confirmat", "Anulat", "Finalizat"]
-        status_f = st.selectbox("Filtrează status", status_filter)
+        status_f = st.selectbox("Status", status_filter)
+    with col3:
+        data_f = st.date_input("De la data", value=None)
 
     rows = programari
     if medic_f != "Toți":
         rows = [r for r in rows if r[2] == medic_f]
     if status_f != "Toate":
         rows = [r for r in rows if r[7] == status_f]
+    if data_f:
+        rows = [r for r in rows if r[4] >= str(data_f)]
 
     if rows:
-        df = pd.DataFrame(rows, columns=["ID", "Pacient", "Medic", "Specialitate", "Data", "Ora", "Motiv", "Status"])
+        df = pd.DataFrame(rows, columns=["ID", "Pacient", "Medic", "Specialitate", "Data", "Ora", "Motiv", "Status", "Durata"])
         df["Status"] = df["Status"].map(lambda s: f"{STATUS_COLORS.get(s, '')} {s}")
+        df["Durata"] = df["Durata"].map(lambda d: f"{d} min")
         df = df.set_index("ID")
         st.dataframe(df, use_container_width=True)
         st.caption(f"Total: {len(rows)} programări")
+
+        # Export Excel
+        buffer = io.BytesIO()
+        df_export = df.copy()
+        df_export["Status"] = df_export["Status"].str.replace(r"[^\w\s]", "", regex=True).str.strip()
+        df_export.to_excel(buffer, index=True)
+        buffer.seek(0)
+        st.download_button(
+            "📥 Export Excel",
+            data=buffer,
+            file_name=f"programari_{date.today()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     else:
         st.info("Nicio programare găsită cu filtrele selectate.")
 
@@ -263,7 +437,7 @@ elif menu == "📂 Istoric":
             with st.form("form_istoric", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    medic_options = {f"{n} — {s}": mid for mid, n, s in medici}
+                    medic_options = {f"{n} — {s}": mid for mid, n, s, c in medici}
                     medic_sel = st.selectbox("Medic", list(medic_options.keys()))
                     data = st.date_input("Data consultației")
                 with col2:
@@ -286,13 +460,12 @@ elif menu == "📂 Istoric":
                     else:
                         st.warning("Diagnosticul este obligatoriu.")
 
-    st.subheader("Căutare")
     col1, col2 = st.columns(2)
     with col1:
         pacient_filter_options = {"Toți pacienții": None} | {n: pid for pid, n, *_ in pacienti}
         pacient_f = st.selectbox("Pacient", list(pacient_filter_options.keys()))
     with col2:
-        medic_filter_options = {"Toți medicii": None} | {f"{n} — {s}": mid for mid, n, s in medici}
+        medic_filter_options = {"Toți medicii": None} | {f"{n} — {s}": mid for mid, n, s, c in medici}
         medic_f = st.selectbox("Medic", list(medic_filter_options.keys()))
 
     consultații = get_istoric(
@@ -306,7 +479,7 @@ elif menu == "📂 Istoric":
             with st.container(border=True):
                 c1, c2 = st.columns(2)
                 c1.markdown(f"**Pacient:** {pac}")
-                c2.markdown(f"**Medic:** Dr. {med} _{spec}_")
+                c2.markdown(f"**Medic:** Dr. {med} — _{spec}_")
                 st.markdown(f"**Data:** {dat} &nbsp;|&nbsp; **Diagnostic:** {diag}")
                 if trat:
                     st.markdown(f"**Tratament:** {trat}")
@@ -315,3 +488,91 @@ elif menu == "📂 Istoric":
         st.caption(f"Total: {len(consultații)} consultații")
     else:
         st.info("Nu există consultații pentru filtrele selectate.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 📊 STATISTICI
+# ══════════════════════════════════════════════════════════════════════════════
+elif menu == "📊 Statistici":
+    st.header("Statistici")
+
+    stats = get_stats()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("👤 Pacienți", stats["total_pacienti"])
+    c2.metric("👨‍⚕️ Medici", stats["total_medici"])
+    c3.metric("📅 Programări azi", stats["programari_azi"])
+    c4.metric("📆 Programări luna", stats["programari_luna"])
+
+    st.divider()
+    st.subheader("Per medic")
+
+    stats_medici = get_stats_per_medic()
+    if stats_medici:
+        df = pd.DataFrame(
+            stats_medici,
+            columns=["Medic", "Specialitate", "Total programări", "Finalizate", "Anulate"]
+        )
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        st.bar_chart(df.set_index("Medic")["Total programări"])
+    else:
+        st.info("Nu există date de afișat.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⚙️ SETĂRI
+# ══════════════════════════════════════════════════════════════════════════════
+elif menu == "⚙️ Setări":
+    st.header("Setări")
+
+    if st.session_state.user["rol"] != "admin":
+        st.warning("Doar administratorii pot accesa setările.")
+        st.stop()
+
+    st.subheader("Utilizatori")
+    with st.form("form_utilizator", clear_on_submit=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            new_user = st.text_input("Username")
+        with col2:
+            new_pass = st.text_input("Parolă", type="password")
+        with col3:
+            new_rol = st.selectbox("Rol", ["receptionist", "admin"])
+        if st.form_submit_button("Adaugă utilizator", type="primary"):
+            if new_user.strip() and new_pass.strip():
+                try:
+                    add_utilizator(new_user.strip(), new_pass, new_rol)
+                    st.success(f"Utilizatorul {new_user} adăugat!")
+                    st.rerun()
+                except Exception:
+                    st.error("Username-ul există deja.")
+            else:
+                st.warning("Completați toate câmpurile.")
+
+    utilizatori = get_utilizatori()
+    for uid, uname, urol in utilizatori:
+        col1, col2, col3 = st.columns([3, 2, 1])
+        col1.write(f"**{uname}**")
+        col2.write(f"`{urol}`")
+        if uname != "admin":
+            if col3.button("🗑", key=f"del_u_{uid}"):
+                delete_utilizator(uid)
+                st.rerun()
+
+    st.divider()
+    st.subheader("Schimbă parola")
+    with st.form("form_parola", clear_on_submit=True):
+        old_pass = st.text_input("Parola actuală", type="password")
+        new_pass1 = st.text_input("Parola nouă", type="password")
+        new_pass2 = st.text_input("Confirmă parola nouă", type="password")
+        if st.form_submit_button("Schimbă parola", type="primary"):
+            user = verify_user(st.session_state.user["username"], old_pass)
+            if not user:
+                st.error("Parola actuală este greșită.")
+            elif new_pass1 != new_pass2:
+                st.error("Parolele noi nu coincid.")
+            elif len(new_pass1) < 6:
+                st.error("Parola trebuie să aibă minim 6 caractere.")
+            else:
+                change_password(st.session_state.user["username"], new_pass1)
+                st.success("Parola a fost schimbată!")

@@ -36,6 +36,8 @@ def migrate():
         cols = {row[1] for row in conn.execute("PRAGMA table_info(medici)")}
         if "culoare" not in cols:
             conn.execute("ALTER TABLE medici ADD COLUMN culoare TEXT DEFAULT '#3498db'")
+        if "interval_min" not in cols:
+            conn.execute("ALTER TABLE medici ADD COLUMN interval_min INTEGER DEFAULT 30")
 
 
 def create_tables():
@@ -53,7 +55,8 @@ def create_tables():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nume TEXT NOT NULL,
                 specialitate TEXT NOT NULL,
-                culoare TEXT DEFAULT '#3498db'
+                culoare TEXT DEFAULT '#3498db',
+                interval_min INTEGER DEFAULT 30
             )
         """)
         conn.execute("""
@@ -144,16 +147,16 @@ def change_password(username, new_password):
 
 
 # ── MEDICI ────────────────────────────────────────────────────────────────────
-def add_medic(nume, specialitate, culoare="#3498db"):
+def add_medic(nume, specialitate, culoare="#3498db", interval_min=30):
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO medici (nume, specialitate, culoare) VALUES (?, ?, ?)",
-            (nume, specialitate, culoare)
+            "INSERT INTO medici (nume, specialitate, culoare, interval_min) VALUES (?, ?, ?, ?)",
+            (nume, specialitate, culoare, interval_min)
         )
 
 def get_medici():
     with get_connection() as conn:
-        return conn.execute("SELECT id, nume, specialitate, culoare FROM medici ORDER BY nume").fetchall()
+        return conn.execute("SELECT id, nume, specialitate, culoare, interval_min FROM medici ORDER BY nume").fetchall()
 
 def delete_medic(medic_id):
     with get_connection() as conn:

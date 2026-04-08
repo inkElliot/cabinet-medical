@@ -63,8 +63,19 @@ menu = st.radio("", PAGINI, horizontal=True, label_visibility="collapsed")
 st.divider()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-ORE = [f"{h:02d}:{m:02d}" for h in range(8, 19) for m in (0, 30)]
 DURATE = [15, 20, 30, 45, 60, 90]
+INTERVALE = [15, 20, 30]
+
+def get_ore(interval_min=30):
+    ore = []
+    h, m = 8, 0
+    while h < 19:
+        ore.append(f"{h:02d}:{m:02d}")
+        m += interval_min
+        if m >= 60:
+            h += m // 60
+            m = m % 60
+    return ore
 
 STATUS_COLORS = {
     "Programat": "🔵",
@@ -130,9 +141,10 @@ elif menu == "📅 Calendar programări":
 
     col_med, col_data = st.columns(2)
     with col_med:
-        medic_options = {f"{n} — {s}": (mid, c) for mid, n, s, c in medici}
+        medic_options = {f"{n} — {s}": (mid, c, iv) for mid, n, s, c, iv in medici}
         medic_selectat = st.selectbox("Medic", list(medic_options.keys()))
-        medic_id, medic_culoare = medic_options.get(medic_selectat, (None, "#3498db"))
+        medic_id, medic_culoare, medic_interval = medic_options.get(medic_selectat, (None, "#3498db", 30))
+        ORE_MEDIC = get_ore(medic_interval)
 
     with col_data:
         data_selectata = st.date_input("Data", value=date.today())
@@ -154,11 +166,11 @@ elif menu == "📅 Calendar programări":
     programari = get_programari_by_medic_data(medic_id, data_selectata)
     prog_by_ora = {p[2]: p for p in programari}
 
-    ocupate = sum(1 for o in ORE if o in prog_by_ora)
-    libere = len(ORE) - ocupate
-    st.caption(f"🟢 {libere} sloturi libere &nbsp;|&nbsp; 🔵 {ocupate} ocupate")
+    ocupate = sum(1 for o in ORE_MEDIC if o in prog_by_ora)
+    libere = len(ORE_MEDIC) - ocupate
+    st.caption(f"🟢 {libere} sloturi libere &nbsp;|&nbsp; 🔵 {ocupate} ocupate &nbsp;|&nbsp; ⏱ interval {medic_interval} min")
 
-    for ora in ORE:
+    for ora in ORE_MEDIC:
         col_ora, col_info, col_actiuni = st.columns([1, 5, 3])
         col_ora.markdown(f"**{ora}**")
 
@@ -267,18 +279,21 @@ elif menu == "➕ Programare nouă":
     with st.form("form_programare", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            medic_options = {f"{n} — {s}": mid for mid, n, s, c in medici}
+            medic_options = {f"{n} — {s}": (mid, iv) for mid, n, s, c, iv in medici}
             medic_sel = st.selectbox("Medic", list(medic_options.keys()))
+            mid_form, interval_form = medic_options.get(medic_sel, (None, 30))
+            ore_form = get_ore(interval_form)
             data = st.date_input("Data", min_value=date.today())
-            durata = st.selectbox("Durată (minute)", DURATE, index=2)
+            durata = st.selectbox("Durată (minute)", DURATE,
+                                  index=DURATE.index(interval_form) if interval_form in DURATE else 2)
         with col2:
-            ora = st.selectbox("Ora", ORE)
+            ora = st.selectbox("Ora", ore_form)
             motiv = st.text_input("Motiv consultație (opțional)")
 
         submitted = st.form_submit_button("💾 Salvează programare", type="primary")
 
         if submitted:
-            mid = medic_options[medic_sel]
+            mid, _ = medic_options[medic_sel]
 
             # Dacă e pacient nou, îl adăugăm automat
             if pacient_nou:
@@ -310,17 +325,19 @@ elif menu == "👨‍⚕️ Medici":
     st.header("Medici")
 
     with st.form("form_medic", clear_on_submit=True):
-        col1, col2, col3 = st.columns([3, 3, 1])
+        col1, col2, col3, col4 = st.columns([3, 3, 1, 1])
         with col1:
             nume = st.text_input("Nume medic")
         with col2:
             specialitate = st.text_input("Specialitate")
         with col3:
             culoare = st.color_picker("Culoare", "#3498db")
+        with col4:
+            interval = st.selectbox("Interval", INTERVALE, index=2, format_func=lambda x: f"{x} min")
         if st.form_submit_button("Adaugă medic", type="primary"):
             if nume.strip() and specialitate.strip():
-                add_medic(nume.strip(), specialitate.strip(), culoare)
-                st.success(f"Dr. {nume} adăugat!")
+                add_medic(nume.strip(), specialitate.strip(), culoare, interval)
+                st.success(f"Dr. {nume} adăugat! (interval {interval} min)")
                 st.rerun()
             else:
                 st.warning("Completați toate câmpurile.")
@@ -328,15 +345,16 @@ elif menu == "👨‍⚕️ Medici":
     st.subheader("Lista medici")
     medici = get_medici()
     if medici:
-        for mid, mnume, mspec, mculoare in medici:
-            col1, col2, col3, col4 = st.columns([3, 3, 1, 1])
+        for mid, mnume, mspec, mculoare, minterval in medici:
+            col1, col2, col3, col4, col5 = st.columns([3, 3, 1, 1, 1])
             col1.markdown(
                 f"<span style='color:{mculoare}'>■</span> **Dr. {mnume}**",
                 unsafe_allow_html=True
             )
             col2.write(f"_{mspec}_")
-            col3.markdown(f"<div style='width:24px;height:24px;background:{mculoare};border-radius:4px'></div>", unsafe_allow_html=True)
-            if col4.button("🗑", key=f"del_med_{mid}", help="Șterge"):
+            col3.write(f"⏱ {minterval} min")
+            col4.markdown(f"<div style='width:24px;height:24px;background:{mculoare};border-radius:4px'></div>", unsafe_allow_html=True)
+            if col5.button("🗑", key=f"del_med_{mid}", help="Șterge"):
                 st.session_state[f"confirm_del_med_{mid}"] = True
 
             if st.session_state.get(f"confirm_del_med_{mid}"):

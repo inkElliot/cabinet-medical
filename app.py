@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from database import (
     create_tables,
     verify_user, add_utilizator, get_utilizatori, delete_utilizator, change_password,
-    add_medic, get_medici, delete_medic,
+    add_medic, get_medici, delete_medic, update_medic_interval,
     add_pacient, get_pacienti, search_pacienti, delete_pacient,
     add_programare, get_programari_by_medic_data, get_all_programari,
     get_programari_azi, get_stats, get_stats_per_medic,
@@ -67,6 +67,8 @@ DURATE = [15, 20, 30, 45, 60, 90]
 INTERVALE = [15, 20, 30]
 
 def get_ore(interval_min=30):
+    if not interval_min or interval_min <= 0 or interval_min > 120:
+        interval_min = 30
     ore = []
     h, m = 8, 0
     while h < 19:
@@ -423,16 +425,38 @@ elif menu == "👨‍⚕️ Medici":
     medici = get_medici()
     if medici:
         for mid, mnume, mspec, mculoare, minterval in medici:
-            col1, col2, col3, col4, col5 = st.columns([3, 3, 1, 1, 1])
+            minterval_display = minterval if minterval and 0 < minterval <= 120 else "?"
+            col1, col2, col3, col4, col5, col6 = st.columns([3, 3, 1, 1, 1, 1])
             col1.markdown(
                 f"<span style='color:{mculoare}'>■</span> **Dr. {mnume}**",
                 unsafe_allow_html=True
             )
             col2.write(f"_{mspec}_")
-            col3.write(f"⏱ {minterval} min")
+            col3.write(f"⏱ {minterval_display} min")
             col4.markdown(f"<div style='width:24px;height:24px;background:{mculoare};border-radius:4px'></div>", unsafe_allow_html=True)
-            if col5.button("🗑", key=f"del_med_{mid}", help="Șterge"):
+            if col5.button("✏️", key=f"edit_med_{mid}", help="Editează interval"):
+                st.session_state[f"edit_interval_{mid}"] = not st.session_state.get(f"edit_interval_{mid}", False)
+                st.rerun()
+            if col6.button("🗑", key=f"del_med_{mid}", help="Șterge"):
                 st.session_state[f"confirm_del_med_{mid}"] = True
+
+            if st.session_state.get(f"edit_interval_{mid}"):
+                with st.container(border=True):
+                    st.markdown(f"**Editează interval Dr. {mnume}**")
+                    ec1, ec2 = st.columns([2, 4])
+                    cur_idx = INTERVALE.index(minterval) if minterval in INTERVALE else 2
+                    new_interval = ec1.selectbox("Interval consultație", INTERVALE,
+                                                 index=cur_idx,
+                                                 format_func=lambda x: f"{x} min",
+                                                 key=f"sel_interval_{mid}")
+                    bs, bc = ec2.columns([1, 3])
+                    if bs.button("💾 Salvează", key=f"save_interval_{mid}", type="primary"):
+                        update_medic_interval(mid, new_interval)
+                        del st.session_state[f"edit_interval_{mid}"]
+                        st.rerun()
+                    if bc.button("↩ Anulează", key=f"cancel_interval_{mid}"):
+                        del st.session_state[f"edit_interval_{mid}"]
+                        st.rerun()
 
             if st.session_state.get(f"confirm_del_med_{mid}"):
                 st.warning(f"Ștergi Dr. {mnume}? Toate programările asociate vor fi pierdute.")

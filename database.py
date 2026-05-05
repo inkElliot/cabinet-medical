@@ -163,6 +163,10 @@ def delete_medic(medic_id):
     with get_connection() as conn:
         conn.execute("DELETE FROM medici WHERE id=?", (medic_id,))
 
+def update_medic_interval(medic_id, interval_min):
+    with get_connection() as conn:
+        conn.execute("UPDATE medici SET interval_min=? WHERE id=?", (interval_min, medic_id))
+
 
 # ── PACIENTI ──────────────────────────────────────────────────────────────────
 def add_pacient(nume, telefon="", email="", data_nasterii=""):

@@ -275,6 +275,13 @@ def delete_programare(programare_id):
     with get_connection() as conn:
         conn.execute("DELETE FROM programari WHERE id=?", (programare_id,))
 
+def update_programare(programare_id, data, ora, durata, motiv):
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE programari SET data=?, ora=?, durata=?, motiv=? WHERE id=?",
+            (str(data), ora, durata, motiv, programare_id)
+        )
+
 def is_slot_ocupat(medic_id, data, ora, durata=30, exclude_id=None):
     with get_connection() as conn:
         query = "SELECT id FROM programari WHERE medic_id=? AND data=? AND ora=?"

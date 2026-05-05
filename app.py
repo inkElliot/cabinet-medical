@@ -9,7 +9,7 @@ from database import (
     add_pacient, get_pacienti, search_pacienti, delete_pacient,
     add_programare, get_programari_by_medic_data, get_all_programari,
     get_programari_azi, get_stats, get_stats_per_medic,
-    update_status_programare, delete_programare, is_slot_ocupat,
+    update_status_programare, update_programare, delete_programare, is_slot_ocupat,
     add_istoric, get_istoric,
     MEDIC_COLORS,
 )
@@ -149,10 +149,13 @@ elif menu == "📅 Calendar programări":
     with col_data:
         data_selectata = st.date_input("Data", value=date.today())
 
-    col_prev, _, col_next = st.columns([1, 6, 1])
+    col_prev, col_azi, _, col_next = st.columns([2, 1, 3, 2])
     with col_prev:
         if st.button("◀ Zi anterioară"):
             data_selectata = data_selectata - timedelta(days=1)
+    with col_azi:
+        if st.button("📅 Azi"):
+            data_selectata = date.today()
     with col_next:
         if st.button("Zi următoare ▶"):
             data_selectata = data_selectata + timedelta(days=1)
@@ -164,20 +167,19 @@ elif menu == "📅 Calendar programări":
         st.stop()
 
     programari = get_programari_by_medic_data(medic_id, data_selectata)
-    prog_by_ora = {p[2]: p for p in programari}
-
-    ocupate = sum(1 for o in ORE_MEDIC if o in prog_by_ora)
+    ocupate = len(programari)
     libere = len(ORE_MEDIC) - ocupate
     st.caption(f"🟢 {libere} sloturi libere &nbsp;|&nbsp; 🔵 {ocupate} ocupate &nbsp;|&nbsp; ⏱ interval {medic_interval} min")
 
-    for ora in ORE_MEDIC:
-        col_ora, col_info, col_actiuni = st.columns([1, 5, 3])
-        col_ora.markdown(f"**{ora}**")
-
-        if ora in prog_by_ora:
-            prog = prog_by_ora[ora]
-            prog_id, pacient_nume, _, motiv, status, durata, telefon = prog
+    if not programari:
+        st.info("Nu există programări pentru această zi.")
+    else:
+        for prog in programari:
+            prog_id, pacient_nume, prog_ora, motiv, status, durata, telefon = prog
             emoji = STATUS_COLORS.get(status, "🔵")
+
+            col_ora, col_info, col_actiuni = st.columns([1, 5, 3])
+            col_ora.markdown(f"**{prog_ora}**")
 
             bg = medic_culoare + "22"
             col_info.markdown(
@@ -190,7 +192,7 @@ elif menu == "📅 Calendar programări":
             )
 
             with col_actiuni:
-                c1, c2 = st.columns([3, 1])
+                c1, c2, c3 = st.columns([3, 1, 1])
                 new_status = c1.selectbox(
                     "", ["Programat", "Confirmat", "Anulat", "Finalizat"],
                     index=["Programat", "Confirmat", "Anulat", "Finalizat"].index(status),
@@ -215,7 +217,11 @@ elif menu == "📅 Calendar programări":
                         del st.session_state[f"confirm_anulare_{prog_id}"]
                         st.rerun()
 
-                if c2.button("🗑", key=f"del_{prog_id}", help="Șterge"):
+                if c2.button("✏️", key=f"edit_{prog_id}", help="Reprogramează"):
+                    st.session_state[f"edit_prog_{prog_id}"] = not st.session_state.get(f"edit_prog_{prog_id}", False)
+                    st.rerun()
+
+                if c3.button("🗑", key=f"del_{prog_id}", help="Șterge"):
                     st.session_state[f"confirm_del_{prog_id}"] = True
 
                 if st.session_state.get(f"confirm_del_{prog_id}"):
@@ -228,10 +234,33 @@ elif menu == "📅 Calendar programări":
                     if cc2.button("↩ Anulează", key=f"cancel_del_{prog_id}"):
                         del st.session_state[f"confirm_del_{prog_id}"]
                         st.rerun()
-        else:
-            col_info.markdown("<span style='color:#aaa'>— liber —</span>", unsafe_allow_html=True)
 
-        st.divider()
+            if st.session_state.get(f"edit_prog_{prog_id}"):
+                with st.container(border=True):
+                    st.markdown("**✏️ Reprogramează**")
+                    ec1, ec2, ec3, ec4 = st.columns(4)
+                    new_data = ec1.date_input("Data nouă", value=data_selectata, key=f"edata_{prog_id}")
+                    ore_edit = get_ore(medic_interval)
+                    ora_idx = ore_edit.index(prog_ora) if prog_ora in ore_edit else 0
+                    new_ora = ec2.selectbox("Ora nouă", ore_edit, index=ora_idx, key=f"eora_{prog_id}")
+                    new_durata = ec3.selectbox("Durată", DURATE,
+                                               index=DURATE.index(durata) if durata in DURATE else 2,
+                                               key=f"edur_{prog_id}",
+                                               format_func=lambda x: f"{x} min")
+                    new_motiv = ec4.text_input("Motiv", value=motiv or "", key=f"emot_{prog_id}")
+                    bsave, bcancel = st.columns([1, 5])
+                    if bsave.button("💾 Salvează", key=f"esave_{prog_id}", type="primary"):
+                        if is_slot_ocupat(medic_id, new_data, new_ora, exclude_id=prog_id):
+                            st.error(f"Slotul {new_ora} pe {new_data} este deja ocupat!")
+                        else:
+                            update_programare(prog_id, new_data, new_ora, new_durata, new_motiv)
+                            del st.session_state[f"edit_prog_{prog_id}"]
+                            st.rerun()
+                    if bcancel.button("↩ Anulează", key=f"ecancel_{prog_id}"):
+                        del st.session_state[f"edit_prog_{prog_id}"]
+                        st.rerun()
+
+            st.divider()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

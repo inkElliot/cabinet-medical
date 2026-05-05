@@ -353,13 +353,14 @@ elif menu == "➕ Programare nouă":
     st.divider()
 
     # ── Detalii programare ────────────────────────────────────────────────────
+    medic_options = {f"{n} — {s}": (mid, iv) for mid, n, s, c, iv in medici}
+    medic_sel = st.selectbox("Medic", list(medic_options.keys()), key="prog_medic_sel")
+    mid_form, interval_form = medic_options.get(medic_sel, (None, 30))
+    ore_form = get_ore(interval_form)
+
     with st.form("form_programare", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            medic_options = {f"{n} — {s}": (mid, iv) for mid, n, s, c, iv in medici}
-            medic_sel = st.selectbox("Medic", list(medic_options.keys()))
-            mid_form, interval_form = medic_options.get(medic_sel, (None, 30))
-            ore_form = get_ore(interval_form)
             data = st.date_input("Data", min_value=date.today())
             durata = st.selectbox("Durată (minute)", DURATE,
                                   index=DURATE.index(interval_form) if interval_form in DURATE else 2)

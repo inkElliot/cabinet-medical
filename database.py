@@ -12,7 +12,7 @@ MEDIC_COLORS = [
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH, timeout=15, check_same_thread=False)
 
 
 def migrate():

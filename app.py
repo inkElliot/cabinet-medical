@@ -14,7 +14,11 @@ from database import (
     MEDIC_COLORS,
 )
 
-create_tables()
+@st.cache_resource
+def init_db():
+    create_tables()
+
+init_db()
 
 st.set_page_config(page_title="Cabinet Medical", layout="wide")
 

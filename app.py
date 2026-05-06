@@ -398,6 +398,8 @@ elif menu == "➕ Programare nouă":
                     st.error(f"Slotul {ora} este deja ocupat pentru acest medic!")
                 else:
                     add_programare(pid_selectat, mid, data, ora, motiv, durata)
+                    st.session_state["pid_ales"] = None
+                    st.session_state["pacient_ales_nume"] = ""
                     st.success(f"✅ Programare salvată pentru {ora} pe {data}")
             except Exception as e:
                 st.error(f"Eroare la salvare: {e}")

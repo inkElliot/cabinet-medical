@@ -362,51 +362,50 @@ elif menu == "➕ Programare nouă":
     mid_form, interval_form = medic_options.get(medic_sel, (None, 30))
     ore_form = get_ore(interval_form)
 
-    with st.form("form_programare", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            data = st.date_input("Data", min_value=date.today())
-            durata = st.selectbox("Durată (minute)", DURATE,
-                                  index=DURATE.index(interval_form) if interval_form in DURATE else 2)
-        with col2:
-            ora = st.selectbox("Ora", ore_form)
-            motiv = st.text_input("Motiv consultație (opțional)")
+    col1, col2 = st.columns(2)
+    with col1:
+        data = st.date_input("Data", min_value=date.today(), key="prog_data")
+        durata = st.selectbox("Durată (minute)", DURATE,
+                              index=DURATE.index(interval_form) if interval_form in DURATE else 2,
+                              key="prog_durata")
+    with col2:
+        ora = st.selectbox("Ora", ore_form, key=f"prog_ora_{mid_form}")
+        motiv = st.text_input("Motiv consultație (opțional)", key="prog_motiv")
 
-        submitted = st.form_submit_button("💾 Salvează programare", type="primary")
+    if st.button("💾 Salvează programare", type="primary"):
+        try:
+            mid, _ = medic_options[medic_sel]
+            pid_selectat = None
 
-        if submitted:
-            try:
-                mid, _ = medic_options[medic_sel]
-                pid_selectat = None
-
-                if pacient_nou:
-                    if not st.session_state.get("np_nume", "").strip():
-                        st.error("Introduceți numele pacientului.")
-                    else:
-                        add_pacient(
-                            st.session_state["np_nume"].strip(),
-                            st.session_state.get("np_tel", "").strip(),
-                            st.session_state.get("np_email", "").strip(),
-                            str(st.session_state["np_dn"]) if st.session_state.get("np_dn") else ""
-                        )
-                        pacienti_noi = search_pacienti(st.session_state["np_nume"].strip())
-                        pid_selectat = pacienti_noi[0][0] if pacienti_noi else None
+            if pacient_nou:
+                if not st.session_state.get("np_nume", "").strip():
+                    st.error("Introduceți numele pacientului.")
                 else:
-                    pid_selectat = st.session_state.get("pid_ales")
+                    add_pacient(
+                        st.session_state["np_nume"].strip(),
+                        st.session_state.get("np_tel", "").strip(),
+                        st.session_state.get("np_email", "").strip(),
+                        str(st.session_state["np_dn"]) if st.session_state.get("np_dn") else ""
+                    )
+                    pacienti_noi = search_pacienti(st.session_state["np_nume"].strip())
+                    pid_selectat = pacienti_noi[0][0] if pacienti_noi else None
+            else:
+                pid_selectat = st.session_state.get("pid_ales")
 
-                if pid_selectat is None and pacient_nou:
-                    pass  # eroarea deja afișată mai sus
-                elif not pid_selectat:
-                    st.error("Selectați sau adăugați un pacient.")
-                elif is_slot_ocupat(mid, data, ora):
-                    st.error(f"Slotul {ora} este deja ocupat pentru acest medic!")
-                else:
-                    add_programare(pid_selectat, mid, data, ora, motiv, durata)
-                    st.session_state["pid_ales"] = None
-                    st.session_state["pacient_ales_nume"] = ""
-                    st.success(f"✅ Programare salvată pentru {ora} pe {data}")
-            except Exception as e:
-                st.error(f"Eroare la salvare: {e}")
+            if pid_selectat is None and pacient_nou:
+                pass
+            elif not pid_selectat:
+                st.error("Selectați sau adăugați un pacient.")
+            elif is_slot_ocupat(mid, data, ora):
+                st.error(f"Slotul {ora} este deja ocupat pentru acest medic!")
+            else:
+                add_programare(pid_selectat, mid, data, ora, motiv, durata)
+                st.session_state["pid_ales"] = None
+                st.session_state["pacient_ales_nume"] = ""
+                st.toast(f"Programare salvată: {ora} pe {data}", icon="✅")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Eroare la salvare: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

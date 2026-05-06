@@ -275,6 +275,9 @@ elif menu == "📅 Calendar programări":
 elif menu == "➕ Programare nouă":
     st.header("Programare nouă")
 
+    if st.session_state.get("_prog_saved"):
+        st.success(st.session_state.pop("_prog_saved"))
+
     medici = get_medici()
     if not medici:
         st.warning("Adaugă mai întâi un medic.")
@@ -372,6 +375,8 @@ elif menu == "➕ Programare nouă":
         ora = st.selectbox("Ora", ore_form, key=f"prog_ora_{mid_form}")
         motiv = st.text_input("Motiv consultație (opțional)", key="prog_motiv")
 
+    st.info(f"🕐 Ora selectată: **{ora}** &nbsp;|&nbsp; 📅 {data.strftime('%d.%m.%Y')} &nbsp;|&nbsp; ⏱ {durata} min")
+
     if st.button("💾 Salvează programare", type="primary"):
         try:
             mid, _ = medic_options[medic_sel]
@@ -402,7 +407,7 @@ elif menu == "➕ Programare nouă":
                 add_programare(pid_selectat, mid, data, ora, motiv, durata)
                 st.session_state["pid_ales"] = None
                 st.session_state["pacient_ales_nume"] = ""
-                st.toast(f"Programare salvată: {ora} pe {data}", icon="✅")
+                st.session_state["_prog_saved"] = f"✅ Programare salvată: {ora} pe {data.strftime('%d.%m.%Y')}"
                 st.rerun()
         except Exception as e:
             st.error(f"Eroare la salvare: {e}")

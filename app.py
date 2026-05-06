@@ -365,15 +365,21 @@ elif menu == "➕ Programare nouă":
     mid_form, interval_form = medic_options.get(medic_sel, (None, 30))
     ore_form = get_ore(interval_form)
 
+    col_ora, col_data = st.columns(2)
+    with col_ora:
+        ora = st.selectbox("Ora", ore_form, key=f"prog_ora_{mid_form}")
+    with col_data:
+        st.markdown(f"<div style='padding-top:8px'>🕐 Ora selectată: <b>{ora}</b></div>", unsafe_allow_html=True)
+
     with st.form("form_programare", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            data = st.date_input("Data", min_value=date.today())
+            data = st.date_input("Data", min_value=date.today(), key="prog_data")
             durata = st.selectbox("Durată (minute)", DURATE,
-                                  index=DURATE.index(interval_form) if interval_form in DURATE else 2)
+                                  index=DURATE.index(interval_form) if interval_form in DURATE else 2,
+                                  key="prog_durata")
         with col2:
-            ora = st.selectbox("Ora", ore_form, key=f"prog_ora_{mid_form}")
-            motiv = st.text_input("Motiv consultație (opțional)")
+            motiv = st.text_input("Motiv consultație (opțional)", key="prog_motiv")
 
         submitted = st.form_submit_button("💾 Salvează programare", type="primary")
 
